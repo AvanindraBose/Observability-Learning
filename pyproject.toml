@@ -15,7 +15,9 @@ dependencies = [
   "plotly",
   "nbformat>=4.2.0",
   "ipykernel>=7.2.0",
-  "streamlit>=1.58.0"
+  "streamlit>=1.58.0",
+  "scikit-learn",
+  "joblib",
 ]
 
 # OPTIONAL GROUPS FOR TRAINING / PIPELINES

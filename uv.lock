@@ -2491,6 +2491,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "ipykernel" },
+    { name = "joblib" },
     { name = "matplotlib" },
     { name = "missingno" },
     { name = "nbformat" },
@@ -2498,6 +2499,7 @@ dependencies = [
     { name = "numpy", version = "2.5.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "pandas" },
     { name = "plotly" },
+    { name = "scikit-learn" },
     { name = "seaborn" },
     { name = "streamlit" },
 ]
@@ -2549,6 +2551,7 @@ requires-dist = [
     { name = "ipykernel", specifier = ">=7.2.0" },
     { name = "ipykernel", marker = "extra == 'dev'", specifier = ">=7.2.0" },
     { name = "jinja2", marker = "extra == 'dev'", specifier = ">=3.1.6" },
+    { name = "joblib" },
     { name = "kagglehub", marker = "extra == 'dev'" },
     { name = "matplotlib" },
     { name = "matplotlib", marker = "extra == 'dev'" },
@@ -2563,6 +2566,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'test'" },
     { name = "pytest-asyncio", marker = "extra == 'test'" },
     { name = "ruff", marker = "extra == 'test'" },
+    { name = "scikit-learn" },
     { name = "seaborn" },
     { name = "seaborn", marker = "extra == 'dev'" },
     { name = "streamlit", specifier = ">=1.58.0" },
