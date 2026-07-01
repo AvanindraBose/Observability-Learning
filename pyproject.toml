@@ -18,6 +18,7 @@ dependencies = [
   "streamlit>=1.58.0",
   "scikit-learn",
   "joblib",
+  "prometheus_client",
 ]
 
 # OPTIONAL GROUPS FOR TRAINING / PIPELINES
@@ -75,4 +76,4 @@ asyncio_default_fixture_loop_scope = "function"
 asyncio_default_test_loop_scope = "function"
 
 [tool.uv]
-package = true
+package = false

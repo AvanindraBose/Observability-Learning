@@ -1,6 +1,7 @@
 import streamlit as st
 from sklearn import datasets
 from sklearn.ensemble import RandomForestClassifier
+from custom_metrics import predict
 
 
 def main() -> None:
@@ -18,7 +19,7 @@ def main() -> None:
     petal_width = st.number_input("Petal width (cm)", min_value=0.0, max_value=10.0, value=0.2, step=0.1)
 
     if st.button("Get prediction"):
-        prediction = classifier.predict([[sepal_length, sepal_width, petal_length, petal_width]])
+        prediction = predict([[sepal_length, sepal_width, petal_length, petal_width]],classifier)
         species = iris.target_names[prediction[0]]
         st.success(f"Predicted species: {species.title()}")
 
