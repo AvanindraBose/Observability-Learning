@@ -520,3 +520,287 @@ curl http://localhost:9100/metrics
 # Final Notes
 
 This deployment guide is intended **only for a single EC2-based learning environment**. It demonstrates how to deploy a containerized FastAPI application with Redis, expose metrics to Prometheus, visualize them in Grafana, and monitor EC2 hardware metrics using Node Exporter. It deliberately avoids production services such as ECS, EKS, Auto Scaling Groups, Load Balancers, ElastiCache, and managed databases.
+
+# Deployment v2 -- Auto Scaling Group + Monitoring (Prometheus)
+
+# Architecture
+
+Browser → ALB (**Port 80**) → Target Group (**Port 8000**) → EC2
+(Docker) → FastAPI (**Port 8000**)
+
+Prometheus → EC2 Service Discovery → EC2 (**Port 8000**) for application
+metrics → EC2 (**Port 9100**) for Node Exporter → EC2 (**Port 9121**)
+for Redis Exporter
+
+------------------------------------------------------------------------
+
+# IMPORTANT PORTS (MEMORIZE)
+
+  Component                   Port
+  --------------------------- ---------------------
+  ALB Listener                **80**
+  Target Group Traffic Port   **8000**
+  FastAPI                     **8000**
+  FastAPI Metrics             **8000 (/metrics)**
+  Node Exporter               **9100**
+  Redis Exporter              **9121**
+  Prometheus                  **9090**
+
+> **Golden Rule:**\
+> ALB listens on **80**.\
+> Application listens on **8000**.\
+> Target Group forwards to **8000**.\
+> Prometheus scrapes the **EC2 directly**, not the ALB.
+
+------------------------------------------------------------------------
+
+# Step 1 -- Upload Deployment Files
+
+Upload `docker-compose.yaml` and `.env` to S3.
+
+------------------------------------------------------------------------
+
+# Step 2 -- Launch Template
+
+While creating the Launch Template:
+
+-   AMI: Ubuntu
+-   Instance Profile with:
+    -   AmazonEC2ContainerRegistryReadOnly
+    -   AmazonS3ReadOnlyAccess
+-   Security Group
+-   **Tag Name = `my-asg-instance`**
+
+The **Name tag is critical** because Prometheus EC2 Service Discovery
+filters instances using this tag.
+
+User Data:
+
+``` bash
+#!/bin/bash
+set -e
+
+apt-get update -y
+apt-get upgrade -y
+
+apt-get install -y docker.io docker-compose-v2 unzip curl
+
+systemctl enable docker
+systemctl start docker
+
+usermod -aG docker ubuntu
+
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/tmp/awscliv2.zip"
+
+cd /tmp
+unzip -o awscliv2.zip
+./aws/install
+
+mkdir -p /home/ubuntu/app
+cd /home/ubuntu/app
+
+aws s3 cp s3://pulse-play-recommender-bucket/docker-compose.yaml .
+aws s3 cp s3://pulse-play-recommender-bucket/.env .
+
+aws ecr get-login-password --region eu-north-1 \
+| docker login \
+--username AWS \
+--password-stdin 660838764267.dkr.ecr.eu-north-1.amazonaws.com
+
+docker compose up -d
+
+wget https://github.com/prometheus/node_exporter/releases/download/v1.10.2/node_exporter-1.10.2.linux-amd64.tar.gz
+tar xvfz node_exporter-1.10.2.linux-amd64.tar.gz
+cd node_exporter-1.10.2.linux-amd64
+./node_exporter &
+```
+
+------------------------------------------------------------------------
+
+# Step 3 -- Create Target Group
+
+-   Protocol: HTTP
+-   **Traffic Port = 8000**
+-   Target Type = Instance
+
+Health Check:
+
+-   Protocol: HTTP
+-   **Port = Traffic Port**
+-   Path:
+
+```{=html}
+<!-- -->
+```
+    /internal/health
+
+------------------------------------------------------------------------
+
+# Step 4 -- Create Application Load Balancer
+
+Listener:
+
+**HTTP : 80**
+
+Forward to Target Group.
+
+Never expose FastAPI directly to the Internet.
+
+Users should access:
+
+    http://<ALB_DNS>/
+
+NOT
+
+    http://<ALB_DNS>:8000
+
+------------------------------------------------------------------------
+
+# Step 5 -- Create Auto Scaling Group
+
+Select:
+
+-   Launch Template
+-   Target Group
+-   ALB
+
+Verify the instance is registered and Healthy.
+
+------------------------------------------------------------------------
+
+# Step 6 -- Monitoring EC2
+
+Create another Ubuntu EC2.
+
+Install:
+
+-   Prometheus
+-   Grafana
+-   AWS CLI
+
+Attach IAM Role:
+
+-   AmazonEC2ReadOnlyAccess
+
+This permission is required for EC2 Service Discovery.
+
+------------------------------------------------------------------------
+
+# Prometheus Configuration
+
+Important scrape jobs:
+
+``` yaml
+scrape_configs:
+
+- job_name: 'pulse-play'
+  ec2_sd_configs:
+    - region: eu-north-1
+      port: 8000
+  metrics_path: /metrics
+  relabel_configs:
+    - source_labels: [__meta_ec2_tag_Name]
+      regex: .*my-asg-instance.*
+      action: keep
+
+- job_name: 'ec2-asg-instances'
+  ec2_sd_configs:
+    - region: eu-north-1
+      port: 9100
+  relabel_configs:
+    - source_labels: [__meta_ec2_tag_Name]
+      regex: .*my-asg-instance.*
+      action: keep
+
+- job_name: 'redis-exporter'
+  ec2_sd_configs:
+    - region: eu-north-1
+      port: 9121
+  relabel_configs:
+    - source_labels: [__meta_ec2_tag_Name]
+      regex: .*my-asg-instance.*
+      action: keep
+```
+
+## Why EC2 Service Discovery?
+
+Prometheus queries the AWS EC2 API to discover instances dynamically.
+
+Whenever an ASG launches or terminates an instance:
+
+-   No Prometheus configuration changes are required.
+-   Targets are added and removed automatically.
+
+------------------------------------------------------------------------
+
+# Important Concepts
+
+## Users
+
+Browser
+
+→ ALB (**80**)
+
+→ Target Group (**8000**)
+
+→ FastAPI (**8000**)
+
+## Monitoring
+
+Prometheus
+
+→ EC2 (**8000**)
+
+→ `/metrics`
+
+Prometheus **does not scrape through the ALB**.
+
+------------------------------------------------------------------------
+
+# Common Mistakes
+
+-   ALB Listener = 80
+-   Target Group = 8000
+-   FastAPI = 8000
+
+Never configure:
+
+-   Target Group = 80
+-   FastAPI = 8000
+
+This causes:
+
+-   Healthy health checks (if configured differently)
+-   502 Bad Gateway for users
+
+Always ensure:
+
+-   Target Group Traffic Port == FastAPI Port
+
+------------------------------------------------------------------------
+
+# Troubleshooting Checklist
+
+-   `curl http://localhost:8000/internal/health`
+-   `curl http://localhost:8000/metrics`
+-   `docker ps`
+-   `docker logs <container>`
+-   `aws elbv2 describe-target-health`
+-   `./promtool check config prometheus.yml`
+
+If Prometheus shows **0 / 0 up**, check:
+
+-   IAM Role
+-   Name tag (`my-asg-instance`)
+-   `ec2_sd_configs`
+-   YAML indentation
+-   Region
+-   Service Discovery page
+
+If Prometheus shows **DOWN**, check:
+
+-   Node Exporter
+-   Redis Exporter
+-   FastAPI metrics endpoint
+-   Security Groups
+-   Port numbers
