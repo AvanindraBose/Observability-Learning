@@ -361,7 +361,7 @@ scrape_configs:
 ## Start Prometheus
 
 ```bash
-nohup ./prometheus --config.file=prometheus.yml > prometheus.log 2>&1 &
+./prometheus --config.file=prometheus.yml &
 ```
 
 Verify
