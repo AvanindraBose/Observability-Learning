@@ -722,6 +722,12 @@ scrape_configs:
       action: keep
 ```
 
+## Start Prometheus
+
+```bash
+./prometheus --config.file=prometheus.yml &
+```
+
 ## Why EC2 Service Discovery?
 
 Prometheus queries the AWS EC2 API to discover instances dynamically.
