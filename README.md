@@ -810,3 +810,189 @@ If Prometheus shows **DOWN**, check:
 -   FastAPI metrics endpoint
 -   Security Groups
 -   Port numbers
+
+
+# Alerting with Prometheus & Alertmanager
+
+## Why Alerting?
+
+Monitoring tells you what is happening. Alerting tells you when action
+is required.
+
+Architecture:
+
+``` text
+Application / Exporters
+        |
+        v
+   Prometheus
+   (Evaluates Rules)
+        |
+        v
+   Alertmanager
+(Grouping, Routing, Silencing,
+ Deduplication, Inhibition)
+        |
+        v
+(Sends the Notification to temas via different routes)
+ Email / Slack / Teams / Telegram
+```
+
+## Components
+
+  Component      Purpose
+  -------------- -------------------------------------
+  Prometheus     Scrapes metrics and evaluates rules
+  alerts.yml     Alert definitions
+  Alertmanager   Routes notifications
+  Receivers      Email/Slack/etc.
+
+## Install Alertmanager
+
+``` bash
+wget https://github.com/prometheus/alertmanager/releases/download/v0.28.1/alertmanager-0.28.1.linux-amd64.tar.gz
+tar -xzf alertmanager-0.28.1.linux-amd64.tar.gz
+cd alertmanager-0.28.1.linux-amd64
+./alertmanager --config.file=alertmanager.yml &
+```
+
+Verify:
+
+``` bash
+ps -ef | grep alertmanager
+curl http://localhost:9093
+```
+
+## Connect Prometheus to Alertmanager
+
+``` yaml
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - localhost:9093
+
+rule_files:
+  - "alerts.yml"
+```
+
+## alerts.yml Structure
+
+``` yaml
+groups:
+  - name: cpu-alerts
+    rules:
+      - alert: HighCPUUsage
+        expr: avg by(job) (rate(node_cpu_seconds_total{mode="user"}[1m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage above 50% for 5 minutes"
+```
+
+### Rule Anatomy
+
+-   **groups** -- logical collection of alerts.
+-   **rules** -- list of alert rules.
+-   **alert** -- alert name.
+-   **expr** -- PromQL expression.
+-   **for** -- duration before firing.
+-   **labels** -- metadata (severity, environment, team).
+-   **annotations** -- human-readable notification text.
+
+Example application alert:
+
+``` yaml
+groups:
+  - name: application-alerts
+    rules:
+      - alert: HighResponseLatency
+        expr: avg by(job) (response_latency_sum/response_latency_total) >= 3
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Response Latency"
+          description: "Average latency greater than 3 seconds."
+```
+
+Replace the metric names with those exposed by your application.
+
+## Validate
+
+``` bash
+./promtool check rules alerts.yml
+./promtool check config prometheus.yml
+```
+
+## Alert Lifecycle
+
+Inactive → Pending → Firing → Alertmanager → Notification
+
+## Alertmanager Concepts
+
+### Grouping
+
+Combine similar alerts into one notification.
+
+### Deduplication
+
+Avoid duplicate notifications from multiple Prometheus servers.
+
+### Silencing
+
+Temporarily suppress notifications during maintenance.
+
+### Inhibition
+
+Suppress lower-priority alerts when a higher-priority alert is already
+firing.
+
+## Basic alertmanager.yml
+
+``` yaml
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: email
+
+receivers:
+  - name: email
+```
+
+## Useful Commands
+
+``` bash
+pkill -f prometheus
+./prometheus --config.file=prometheus.yml
+
+pkill -f alertmanager
+./alertmanager --config.file=alertmanager.yml &
+```
+
+Prometheus: - http://`<PROMETHEUS_IP>`{=html}:9090/targets -
+http://`<PROMETHEUS_IP>`{=html}:9090/alerts
+
+Alertmanager: - http://`<PROMETHEUS_IP>`{=html}:9093
+
+## CPU Stress Test
+
+``` bash
+sudo apt update
+sudo apt install -y stress
+
+CPU_CORES=$(nproc)
+stress --cpu "$CPU_CORES" --timeout 300
+```
+
+## Best Practices
+
+-   Always use `for`.
+-   Validate configs with `promtool`.
+-   Keep rules in version control.
+-   Use meaningful labels and annotations.
+-   Group related alerts.
+-   Test alerts before production.
